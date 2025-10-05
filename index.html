@@ -150,19 +150,23 @@
             }
         }
 
-        // --- UPDATED: Faster, parallel face data processing ---
+        // --- UPDATED: Faster, parallel face data processing with CORS Proxy ---
         async function createFaceMatcher() {
             loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (0%)';
             let completedCount = 0;
 
+            // --- FIX: Use a CORS proxy to prevent image loading errors from external sites ---
+            const corsProxy = 'https://api.allorigins.win/raw?url=';
+
             const promises = employees.map(emp => 
                 (async () => {
                     try {
-                        const img = await faceapi.fetchImage(emp.photoUrl);
+                        // Prepend the proxy to the image URL to bypass CORS restrictions
+                        const proxiedUrl = corsProxy + encodeURIComponent(emp.photoUrl);
+                        const img = await faceapi.fetchImage(proxiedUrl);
                         const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                         
                         if (detection && detection.descriptor) {
-                             // This is the correct constructor usage. The previous error was likely due to a loading issue.
                             return new faceapi.LabeledFaceDescriptor(emp.id, [detection.descriptor]);
                         } else {
                             console.warn(`រកមិនឃើញផ្ទៃមុខក្នុងរូបថតសម្រាប់: ${emp.name} (${emp.id})`);
