@@ -130,14 +130,19 @@
                 const csvText = await response.text();
                 
                 const rows = csvText.split('\n').map(row => row.split('","').map(cell => cell.replace(/"/g, '')));
-                employees = rows.slice(8) 
+                
+                const mappedEmployees = rows.slice(8) 
                     .map(row => ({
                         id: row[4],       // Column E
                         name: row[11],    // Column L
                         photoUrl: row[26] // Column AA
-                    }))
-                    .filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.includes('drive.google.com'));
+                    }));
+
+                // UPDATED: Filter for any valid HTTP link, not just Google Drive
+                employees = mappedEmployees.filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.startsWith('http'));
                 
+                console.log("Final valid employees (after filtering):", employees);
+
                 if (employees.length === 0) {
                     throw new Error("រកមិនឃើញទិន្នន័យបុគ្គលិកដែលមានសុពលភាពទេ។ សូមពិនិត្យ Google Sheet។");
                 }
@@ -156,37 +161,20 @@
 
             for (const emp of employees) {
                 try {
-                    // Extract file ID from Google Drive URL to use with proxy
-                    const fileIdMatch = emp.photoUrl.match(/d\/(.+?)\//);
-                    if (!fileIdMatch) {
-                        console.warn(`Invalid Google Drive URL for ${emp.name}: ${emp.photoUrl}`);
-                        errorCount++;
-                        continue;
-                    }
-                    const fileId = fileIdMatch[1];
-                    const proxyUrl = `${SCRIPT_URL}?action=getImage&fileId=${fileId}`;
-                    
-                    const response = await fetch(proxyUrl);
-                    const data = await response.json();
-
-                    if (data.status !== 'success') {
-                        console.warn(`Proxy error for ${emp.name}: ${data.message || 'Unknown error'}`);
-                        errorCount++;
-                        continue; // Skip this employee and try the next one
-                    }
-                    
-                    // FIXED: Corrected typo from base4Image to base64Image
-                    const img = await faceapi.fetchImage(data.base64Image);
+                    // --- UPDATED LOGIC ---
+                    // Directly fetch the image from the provided URL (e.g., i.postimg.cc)
+                    // The Google Apps Script proxy is no longer needed.
+                    const img = await faceapi.fetchImage(emp.photoUrl);
                     const detections = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                     
                     if (detections) {
                         labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptor(emp.id, [detections.descriptor]));
                     } else {
-                        console.warn(`No face detected for employee: ${emp.name}`);
+                        console.warn(`រកមិនឃើញផ្ទៃមុខក្នុងរូបថតសម្រាប់បុគ្គលិក: ${emp.name}`);
                         errorCount++;
                     }
                 } catch (error) {
-                    console.error(`Failed to process image for ${emp.name}:`, error);
+                    console.error(`បរាជ័យក្នុងការទាញ ឬដំណើរការរូបថតសម្រាប់ ${emp.name}:`, error);
                     errorCount++;
                 }
                 loadedCount++;
@@ -194,7 +182,7 @@
             }
 
             if (labeledFaceDescriptors.length === 0) {
-                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ៖ (១) URL រូបថត, (២) ការអនុញ្ញាត (Permissions) ក្នុង Google Drive, និង (៣) ការ Deploy Google Apps Script។");
+                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ URL រូបថត និងបញ្ហា CORS។");
             }
 
             // A lower distance threshold means a stricter match (e.g., 0.5 is a good starting point)
@@ -220,7 +208,7 @@
                 detectionInterval = setInterval(async () => {
                     if (!faceMatcher) return;
 
-                    const detections = await faceapi.detectAllFaces(faceVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                    const detections = await faceapi.detectAllFaces(faceVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                     const resizedDetections = faceapi.resizeResults(detections, displaySize);
                     
                     canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
@@ -238,7 +226,8 @@
                     }
                 }, 500); // Scan every 500ms
 
-            } catch (err) {
+            } catch (err)
+ {
                 scanMessage.textContent = 'មិនអាចបើកកាមេរ៉ាបានទេ';
                 console.error("Camera access error:", err);
             }
@@ -251,14 +240,13 @@
             selectedEmployee = employees.find(emp => emp.id === employeeId);
             if (!selectedEmployee) {
                 console.error("Matched employee ID not found in the list:", employeeId);
-                window.location.reload(); // Restart if something went wrong
+                window.location.reload();
                 return;
             }
 
             scanMessage.textContent = `ស្គាល់អត្តសញ្ញាណ៖ ${selectedEmployee.name}`;
             speak(`សួស្ដី ${selectedEmployee.name}`);
             
-            // Wait a moment before submitting
             await new Promise(resolve => setTimeout(resolve, 1500)); 
 
             scanningStep.classList.add('hidden');
@@ -268,7 +256,8 @@
 
         // --- Data Submission and UI Display ---
         function displayResultScreen() {
-             document.getElementById('employee-photo').src = selectedEmployee.photoUrl.replace("view?usp=sharing", "preview");
+             // UPDATED: Directly use the photoUrl without modification
+             document.getElementById('employee-photo').src = selectedEmployee.photoUrl;
              document.getElementById('employee-name-display').textContent = selectedEmployee.name;
              document.getElementById('employee-id-display').textContent = `ID: ${selectedEmployee.id}`;
              updateLogDisplay();
@@ -389,27 +378,6 @@
                 loadingMessage.parentElement.querySelector('.loader').classList.add('hidden');
             }
         }
-
-        // --- Google Apps Script Proxy for Images ---
-        // Make sure your Google Apps Script has a doGet function like this:
-        /*
-        function doGet(e) {
-          if (e.parameter.action === 'getImage' && e.parameter.fileId) {
-            try {
-              const file = DriveApp.getFileById(e.parameter.fileId);
-              const blob = file.getBlob();
-              const base64Image = "data:" + blob.getContentType() + ";base64," + Utilities.encodeBase64(blob.getBytes());
-              return ContentService.createTextOutput(JSON.stringify({ status: 'success', base64Image: base64Image }))
-                .setMimeType(ContentService.MimeType.JSON);
-            } catch (error) {
-              return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
-                .setMimeType(ContentService.MimeType.JSON);
-            }
-          }
-          return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid request' }))
-            .setMimeType(ContentService.MimeType.JSON);
-        }
-        */
 
         initialize();
     </script>
