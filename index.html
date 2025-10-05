@@ -62,7 +62,7 @@
 
     <script>
         // ================== CONFIGURATION ==================
-        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxwSJYdzVMweOyJbPJ-ChnRE01vX0rS04tlfYPPp687_y4_LP4ilFPwBB5joPe-_91u/exec';
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwOa3861iYp1Q4lX-QzG_8b_Xv9h1wK0r1tGz2Z_8Hj6qN_9n3yL4p2s0f6/exec';
         const RECOGNITION_COOLDOWN = 30000; // 30 seconds cooldown for the same person
         const MAX_LOG_ENTRIES = 8;
         // ===============================================
@@ -90,7 +90,8 @@
         }
         
         async function loadModels() {
-            const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+            // FIXED: Loading models from the local 'models' folder
+            const MODEL_URL = 'models'; 
             loaderText.textContent = 'កំពុងទាញយក Models...';
             await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
             await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
@@ -110,7 +111,9 @@
                     employeeData.map(async (employee, index) => {
                         loaderText.textContent = `កំពុងវិភាគ៖ (${index + 1}/${employeeData.length}) ${employee.name}`;
                         try {
-                           const img = await faceapi.fetchImage(employee.photoUrl);
+                           // Using a CORS proxy to prevent image loading issues
+                           const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                           const img = await faceapi.fetchImage(proxyUrl + employee.photoUrl);
                            const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
                            if (!detection) return null;
                            return new faceapi.LabeledFaceDescriptors(employee.id, [detection.descriptor]);
@@ -187,62 +190,5 @@
                     console.warn('Attendance already recorded for today:', result.message);
                 }
 
-            } catch (error) {
-                console.error('Error processing recognition:', error);
-            }
-        }
-
-        function startRecognition() {
-            recognitionInterval = setInterval(async () => {
-                if (!faceMatcher) return;
-
-                const canvasSize = { width: video.videoWidth, height: video.videoHeight };
-                faceapi.matchDimensions(overlay, canvasSize);
-
-                const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-                                                .withFaceLandmarks()
-                                                .withFaceDescriptors();
-                const resizedDetections = faceapi.resizeResults(detections, canvasSize);
-
-                overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
-
-                for (const detection of resizedDetections) {
-                    const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-                    const box = detection.detection.box;
-                    const drawBox = new faceapi.draw.DrawBox(box, { label: bestMatch.toString() });
-                    drawBox.draw(overlay);
-
-                    if (bestMatch.label !== 'unknown') {
-                        const employeeId = bestMatch.label;
-                        const lastProcessedTime = recentlyProcessed.get(employeeId);
-                        
-                        // Check cooldown
-                        if (!lastProcessedTime || (Date.now() - lastProcessedTime > RECOGNITION_COOLDOWN)) {
-                            processRecognition(employeeId);
-                        }
-                    }
-                }
-            }, 1000); // Scan every second
-        }
-
-        async function initialize() {
-            await startVideo();
-            video.addEventListener('loadedmetadata', async () => {
-                await loadModels();
-                const labeledDescriptors = await getLabeledFaceDescriptors();
-
-                if (labeledDescriptors.length > 0) {
-                    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
-                    loader.style.display = 'none';
-                    startRecognition();
-                } else {
-                    loaderText.textContent = 'មិនអាចដំណើរការបានទេ ដោយសារគ្មានទិន្នន័យ។';
-                }
-            });
-        }
-        
-        initialize();
-    </script>
-</body>
-</html>
+            } catch (error)
 
