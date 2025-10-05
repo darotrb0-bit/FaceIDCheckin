@@ -100,7 +100,7 @@
         // --- Configuration ---
         const GOOGLE_SHEET_ID = '1eRyPoifzyvB4oBmruNyXcoKMKPRqjk6xDD6-bPNW6pc';
         const GOOGLE_SHEET_NAME = 'DIList';
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVk-h1hW8g-_Z-rViFVzzRN8h1b9fNjoleNjj1gaHd42X3C66vVJi1HJARXYTB81rG/exec';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxwSJYdzVMweOyJbPJ-ChnRE01vX0rS04tlfYPPp687_y4_LP4ilFPwBB5joPe-_91u/exec';
 
         // --- Audio Functions ---
         function loadVoices() {
@@ -150,20 +150,26 @@
             }
         }
 
-        // --- UPDATED: Faster, parallel face data processing with CORS Proxy ---
+        // --- UPDATED: Using Google Apps Script as a reliable image proxy ---
         async function createFaceMatcher() {
             loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (0%)';
             let completedCount = 0;
 
-            // --- FIX: Use a CORS proxy to prevent image loading errors from external sites ---
-            const corsProxy = 'https://api.allorigins.win/raw?url=';
-
             const promises = employees.map(emp => 
                 (async () => {
                     try {
-                        // Prepend the proxy to the image URL to bypass CORS restrictions
-                        const proxiedUrl = corsProxy + encodeURIComponent(emp.photoUrl);
-                        const img = await faceapi.fetchImage(proxiedUrl);
+                        // Use our Google Apps Script as a proxy
+                        const proxyUrl = `${SCRIPT_URL}?action=getImage&url=${encodeURIComponent(emp.photoUrl)}`;
+                        
+                        const response = await fetch(proxyUrl);
+                        const data = await response.json();
+
+                        if (data.status !== 'success') {
+                            throw new Error(data.message || `Proxy failed for ${emp.name}`);
+                        }
+                        
+                        // face-api.js can load images directly from Base64 strings
+                        const img = await faceapi.fetchImage(data.base64Image);
                         const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                         
                         if (detection && detection.descriptor) {
@@ -176,7 +182,6 @@
                         console.error(`បរាជ័យក្នុងការទាញរូបថតសម្រាប់ ${emp.name}:`, error);
                         return null;
                     } finally {
-                        // Update progress after each promise settles (success or fail)
                         completedCount++;
                         const progress = Math.round((completedCount / employees.length) * 100);
                         loadingMessage.textContent = `កំពុងរៀបចំទិន្នន័យ... (${progress}%) | ${completedCount}/${employees.length}`;
@@ -388,6 +393,69 @@
         }
 
         initialize();
+
+        /*
+        ====================================================================================================
+        !!! សូមអាន !!!  កូដសម្រាប់ Google Apps Script (Code.gs)
+        ====================================================================================================
+        
+        សូម Copy កូដខាងក្រោមនេះทั้งหมด ហើយយកទៅ Paste ជំនួសកូដចាស់នៅក្នុងไฟล์ Code.gs របស់អ្នក។
+        បន្ទាប់មក សូម Deploy ឡើងវិញ (Deploy > New deployment...)។
+        
+        ----------------------------------------------------------------------------------------------------
+
+        function doGet(e) {
+          // This function now acts as an image proxy to solve CORS issues.
+          if (e.parameter.action === 'getImage' && e.parameter.url) {
+            try {
+              const imageUrl = e.parameter.url;
+              const response = UrlFetchApp.fetch(imageUrl);
+              const blob = response.getBlob();
+              const base64Image = "data:" + blob.getContentType() + ";base64," + Utilities.encodeBase64(blob.getBytes());
+              
+              return ContentService.createTextOutput(JSON.stringify({ status: 'success', base64Image: base64Image }))
+                .setMimeType(ContentService.MimeType.JSON);
+
+            } catch (error) {
+              return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
+                .setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+          
+          // Default response for other GET requests if any
+          return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid GET request' }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+
+        function doPost(e) {
+          try {
+            const sheet = SpreadsheetApp.openById("YOUR_GOOGLE_SHEET_ID_HERE").getSheetByName("AttendanceLog"); // <-- IMPORTANT: Replace with your Sheet ID and create a sheet named "AttendanceLog"
+            const data = JSON.parse(e.postData.contents);
+
+            // Create a header row if the sheet is empty
+            if (sheet.getLastRow() === 0) {
+              sheet.appendRow(["Timestamp", "Employee ID", "Employee Name", "Action", "User Agent"]);
+            }
+            
+            sheet.appendRow([
+              data.timestamp,
+              data.employeeId,
+              data.employeeName,
+              data.action,
+              data.userAgent
+            ]);
+            
+            return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Attendance recorded' }))
+              .setMimeType(ContentService.MimeType.JSON);
+
+          } catch (error) {
+            return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
+              .setMimeType(ContentService.MimeType.JSON);
+          }
+        }
+
+        */
+
     </script>
 </body>
 </html>
