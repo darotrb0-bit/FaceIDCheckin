@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ប្រព័ន្ធវត្តមានបុគ្គលិក Face Recognition</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+    <!-- FIX 1: Correctly link to the minified face-api.js file -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         body {
             font-family: 'Kantumruy Pro', sans-serif;
@@ -25,6 +26,19 @@
         }
         .employee-card img {
             object-fit: cover;
+        }
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @-webkit-keyframes spinner {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
     <!-- Add Khmer font from Google Fonts -->
@@ -108,7 +122,8 @@
 
         // Function to load face recognition models
         async function loadModels() {
-            const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+            // FIX 2: Load models from the local 'models' folder
+            const MODEL_URL = 'models';
             loadingText.innerText = 'កំពុងទាញយក Models...';
             await Promise.all([
                 faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
@@ -154,8 +169,9 @@
                     
                     loadingText.innerText = `កំពុងវិភាគរូបថតបុគ្គលិក ${i + 1}/${employees.length}: ${employee.name}`;
                     try {
-                        // Use a proxy to avoid CORS issues if necessary, but direct fetch is better.
-                        const img = await faceapi.fetchImage(employee.imageUrl);
+                        // Use a proxy to avoid CORS issues
+                        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                        const img = await faceapi.fetchImage(proxyUrl + employee.imageUrl);
                         const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
                         if (detections) {
                             // Use employee ID as the label for uniqueness
@@ -208,12 +224,6 @@
                     body: JSON.stringify({ employeeId: employeeId })
                 });
 
-                // Since we can't read the response with no-cors, we assume success
-                // A better approach is to have the Apps Script return a JSONP response.
-                // For this project, we will just show a generic success message.
-                // NOTE: The `doPost` function will be complex, so this is a temporary placeholder message.
-                // The actual message logic is handled in the Apps Script and we can't see it here.
-                // Let's assume a message and then clear it.
                 statusMessage.textContent = 'បានកត់ត្រាដោយជោគជ័យ!';
                 statusMessage.className = 'mt-4 p-4 rounded-lg text-lg font-semibold bg-green-100 text-green-800';
 
@@ -235,8 +245,9 @@
         video.addEventListener('play', async () => {
             if (!labeledFaceDescriptors) {
                 labeledFaceDescriptors = await getLabeledFaceDescriptors();
-                if (!labeledFaceDescriptors) {
+                if (!labeledFaceDescriptors || labeledFaceDescriptors.length === 0) {
                     loadingText.innerText = "បរាជ័យក្នុងការរៀបចំប្រព័ន្ធ។ សូមពិនិត្យ Console។";
+                    loadingOverlay.style.display = 'flex'; // Show overlay again on failure
                     return;
                 }
             }
@@ -288,3 +299,4 @@
     </script>
 </body>
 </html>
+
