@@ -138,11 +138,8 @@
                         photoUrl: row[26] // Column AA
                     }));
 
-                // UPDATED: Filter for any valid HTTP link, not just Google Drive
                 employees = mappedEmployees.filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.startsWith('http'));
                 
-                console.log("Final valid employees (after filtering):", employees);
-
                 if (employees.length === 0) {
                     throw new Error("រកមិនឃើញទិន្នន័យបុគ្គលិកដែលមានសុពលភាពទេ។ សូមពិនិត្យ Google Sheet។");
                 }
@@ -153,40 +150,49 @@
             }
         }
 
+        // --- UPDATED: Faster, parallel face data processing ---
         async function createFaceMatcher() {
-            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ...';
-            const labeledFaceDescriptors = [];
-            let loadedCount = 0;
-            let errorCount = 0;
+            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (0%)';
+            let completedCount = 0;
 
-            for (const emp of employees) {
-                try {
-                    // --- UPDATED LOGIC ---
-                    // Directly fetch the image from the provided URL (e.g., i.postimg.cc)
-                    // The Google Apps Script proxy is no longer needed.
-                    const img = await faceapi.fetchImage(emp.photoUrl);
-                    const detections = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-                    
-                    if (detections) {
-                        labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptor(emp.id, [detections.descriptor]));
-                    } else {
-                        console.warn(`រកមិនឃើញផ្ទៃមុខក្នុងរូបថតសម្រាប់បុគ្គលិក: ${emp.name}`);
-                        errorCount++;
+            const promises = employees.map(emp => 
+                (async () => {
+                    try {
+                        const img = await faceapi.fetchImage(emp.photoUrl);
+                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        
+                        if (detection && detection.descriptor) {
+                             // This is the correct constructor usage. The previous error was likely due to a loading issue.
+                            return new faceapi.LabeledFaceDescriptor(emp.id, [detection.descriptor]);
+                        } else {
+                            console.warn(`រកមិនឃើញផ្ទៃមុខក្នុងរូបថតសម្រាប់: ${emp.name} (${emp.id})`);
+                            return null;
+                        }
+                    } catch (error) {
+                        console.error(`បរាជ័យក្នុងការទាញរូបថតសម្រាប់ ${emp.name}:`, error);
+                        return null;
+                    } finally {
+                        // Update progress after each promise settles (success or fail)
+                        completedCount++;
+                        const progress = Math.round((completedCount / employees.length) * 100);
+                        loadingMessage.textContent = `កំពុងរៀបចំទិន្នន័យ... (${progress}%) | ${completedCount}/${employees.length}`;
                     }
-                } catch (error) {
-                    console.error(`បរាជ័យក្នុងការទាញ ឬដំណើរការរូបថតសម្រាប់ ${emp.name}:`, error);
-                    errorCount++;
-                }
-                loadedCount++;
-                loadingMessage.textContent = `កំពុងរៀបចំ... (${loadedCount}/${employees.length}) | បរាជ័យ: ${errorCount}`;
-            }
+                })()
+            );
 
-            if (labeledFaceDescriptors.length === 0) {
-                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ URL រូបថត និងបញ្ហា CORS។");
-            }
+            const results = await Promise.all(promises);
+            const validDescriptors = results.filter(descriptor => descriptor !== null);
 
-            // A lower distance threshold means a stricter match (e.g., 0.5 is a good starting point)
-            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); 
+            const successCount = validDescriptors.length;
+            const errorCount = employees.length - successCount;
+            console.log(`ការរៀបចំបានបញ្ចប់។ ជោគជ័យ: ${successCount}, បរាជ័យ: ${errorCount}`);
+
+
+            if (validDescriptors.length === 0) {
+                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ URL រូបថត និងការតភ្ជាប់អ៊ីនធឺណិត។");
+            }
+            
+            faceMatcher = new faceapi.FaceMatcher(validDescriptors, 0.5); 
         }
 
         // --- Core Face Scanning Logic ---
@@ -226,8 +232,7 @@
                     }
                 }, 500); // Scan every 500ms
 
-            } catch (err)
- {
+            } catch (err) {
                 scanMessage.textContent = 'មិនអាចបើកកាមេរ៉ាបានទេ';
                 console.error("Camera access error:", err);
             }
@@ -256,7 +261,6 @@
 
         // --- Data Submission and UI Display ---
         function displayResultScreen() {
-             // UPDATED: Directly use the photoUrl without modification
              document.getElementById('employee-photo').src = selectedEmployee.photoUrl;
              document.getElementById('employee-name-display').textContent = selectedEmployee.name;
              document.getElementById('employee-id-display').textContent = `ID: ${selectedEmployee.id}`;
