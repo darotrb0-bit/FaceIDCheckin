@@ -26,81 +26,81 @@
             width: 100%;
             max-width: 500px;
             margin: auto;
-            border-radius: 0.5rem;
-            overflow: hidden; /* Ensures canvas stays within borders */
+            transform: scaleX(-1); /* Mirror the video feed */
         }
         video {
             width: 100%;
-            transform: scaleX(-1); /* Mirror the video for a natural feel */
+            border-radius: 0.5rem;
         }
         canvas {
             position: absolute;
             top: 0;
             left: 0;
-            transform: scaleX(-1); /* Mirror the canvas to match the video */
         }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
     <div id="main-container" class="w-full max-w-md mx-auto">
         
-        <!-- Step 1: Loading and Face Scanning -->
-        <div id="scanning-step" class="text-center bg-gray-800 p-6 rounded-lg shadow-lg">
-            <div id="loader-container">
-                <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-24 w-24 mx-auto mb-4"></div>
-                <h2 class="text-xl font-semibold text-teal-300">កំពុងរៀបចំប្រព័ន្ធ...</h2>
-                <p id="loading-message" class="text-gray-400 h-6">សូមរង់ចាំបន្តិច</p>
-            </div>
-            <div id="video-container" class="hidden mt-4">
-                <video id="face-video" playsinline autoplay muted></video>
-            </div>
-             <p id="scan-message" class="text-center mt-4 h-6 text-yellow-400"></p>
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="text-center">
+            <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-24 w-24 mx-auto mb-4"></div>
+            <h2 class="text-xl font-semibold">កំពុងរៀបចំប្រព័ន្ធ...</h2>
+            <p id="loading-message">សូមរង់ចាំបន្តិច</p>
         </div>
 
-        <!-- Step 2: Result Screen -->
-        <div id="result-step" class="hidden text-center bg-gray-800 p-6 rounded-lg shadow-lg">
-            <div class="mb-4">
-                <img id="employee-photo" class="w-32 h-32 rounded-full mx-auto border-4 border-teal-400 object-cover" src="https://placehold.co/128x128/334155/e2e8f0?text=..." alt="Employee Photo">
-                <h2 id="employee-name-display" class="text-2xl font-bold mt-4"></h2>
-                <p id="employee-id-display" class="text-gray-400 text-lg"></p>
+        <!-- Main scanning and result view -->
+        <div id="main-view" class="hidden bg-gray-800 p-6 rounded-lg shadow-lg">
+            <!-- Camera View (for scanning) -->
+            <div id="camera-view">
+                 <h1 class="text-2xl font-bold text-center mb-4 text-teal-300">ប្រព័ន្ធកត់ត្រាវត្តមាន</h1>
+                 <p class="text-center text-gray-400 mb-4">សូមដាក់មុខឲ្យចំកាមេរ៉ា</p>
+                 <div id="video-container">
+                     <video id="face-video" playsinline autoplay muted></video>
+                     <canvas id="face-canvas"></canvas>
+                 </div>
+                 <p id="scan-message" class="text-center mt-4 h-6"></p>
             </div>
-            <p id="result-message" class="text-center my-4 h-12 text-xl"></p>
-            <div id="attendance-log" class="mt-4 text-left bg-gray-700 p-4 rounded-lg max-h-48 overflow-y-auto">
-                <h3 class="font-bold mb-2 text-teal-300">កំណត់ត្រាវត្តមានថ្ងៃនេះ</h3>
-                <div id="log-content"></div>
-            </div>
-            <button id="scan-again-button" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition duration-300">
-                ស្កេនម្ដងទៀត
-            </button>
-        </div>
         
+            <!-- Result View (shown after scan) -->
+            <div id="result-view" class="hidden text-center">
+                 <div class="mb-4">
+                     <img id="employee-photo" class="w-24 h-24 rounded-full mx-auto border-4 border-teal-400" src="https://placehold.co/100x100/334155/e2e8f0?text=..." alt="Employee Photo">
+                     <h2 id="employee-name-display" class="text-xl font-bold mt-2"></h2>
+                     <p id="employee-id-display" class="text-gray-400"></p>
+                 </div>
+                 <p id="message" class="text-center mt-4 h-12"></p>
+                 <div id="attendance-log" class="mt-4 text-left bg-gray-700 p-4 rounded-lg max-h-48 overflow-y-auto">
+                     <h3 class="font-bold mb-2">កំណត់ត្រាវត្តមានថ្ងៃនេះ</h3>
+                     <div id="log-content"></div>
+                 </div>
+            </div>
+        </div>
+
     </div>
     
     <script>
-        // --- DOM Elements ---
         const faceVideo = document.getElementById('face-video');
+        const messageDiv = document.getElementById('message');
+        const scanMessageDiv = document.getElementById('scan-message');
+        const loadingScreen = document.getElementById('loading-screen');
         const loadingMessage = document.getElementById('loading-message');
-        const scanMessage = document.getElementById('scan-message');
-        const resultMessage = document.getElementById('result-message');
-        const scanningStep = document.getElementById('scanning-step');
-        const resultStep = document.getElementById('result-step');
-        const videoContainer = document.getElementById('video-container');
-        const loaderContainer = document.getElementById('loader-container');
+        const mainView = document.getElementById('main-view');
+        const cameraView = document.getElementById('camera-view');
+        const resultView = document.getElementById('result-view');
         const logContent = document.getElementById('log-content');
-        const scanAgainButton = document.getElementById('scan-again-button');
 
-        // --- Global State ---
         let employees = [];
         let selectedEmployee = null;
-        let faceMatcher = null;
         let currentStream;
+        let faceMatcher = null;
         let khmerVoice = null;
-        let detectionInterval;
+        let scanInterval = null;
 
         // --- Configuration ---
         const GOOGLE_SHEET_ID = '1eRyPoifzyvB4oBmruNyXcoKMKPRqjk6xDD6-bPNW6pc';
         const GOOGLE_SHEET_NAME = 'DIList';
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxwSJYdzVMweOyJbPJ-ChnRE01vX0rS04tlfYPPp687_y4_LP4ilFPwBB5joPe-_91u/exec';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVk-h1hW8g-_Z-rViFVzzRN8h1b9fNjoleNjj1gaHd42X3C66vVJi1HJARXYTB81rG/exec';
 
         // --- Audio Functions ---
         function loadVoices() {
@@ -117,12 +117,17 @@
                 utterance.lang = 'km-KH';
                 if (khmerVoice) utterance.voice = khmerVoice;
                 utterance.rate = options.rate || 1.0;
+                utterance.pitch = options.pitch || 1.0;
+                utterance.volume = options.volume || 1.0;
                 window.speechSynthesis.speak(utterance);
+            } else {
+                console.error('Speech Synthesis not supported.');
             }
         }
         
-        // --- Data Fetching and Preparation ---
+        // --- Data Fetching & Preparation ---
         async function fetchEmployeeData() {
+            loadingMessage.textContent = 'កំពុងទាញទិន្នន័យបុគ្គលិក...';
             try {
                 const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${GOOGLE_SHEET_NAME}&headers=1`;
                 const response = await fetch(url);
@@ -130,19 +135,13 @@
                 const csvText = await response.text();
                 
                 const rows = csvText.split('\n').map(row => row.split('","').map(cell => cell.replace(/"/g, '')));
-                
-                const mappedEmployees = rows.slice(8) 
+                employees = rows.slice(8) 
                     .map(row => ({
-                        id: row[4],       // Column E
-                        name: row[11],    // Column L
-                        photoUrl: row[26] // Column AA
-                    }));
-
-                employees = mappedEmployees.filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.startsWith('http'));
-                
-                if (employees.length === 0) {
-                    throw new Error("រកមិនឃើញទិន្នន័យបុគ្គលិកដែលមានសុពលភាពទេ។ សូមពិនិត្យ Google Sheet។");
-                }
+                        id: row[4],
+                        name: row[11],
+                        photoUrl: row[26]
+                    }))
+                    .filter(emp => emp.id && emp.name && emp.photoUrl); 
             } catch (error) {
                 console.error('Error fetching employee data:', error);
                 loadingMessage.textContent = 'បរាជ័យក្នុងការទាញទិន្នន័យបុគ្គលិក។';
@@ -150,139 +149,89 @@
             }
         }
 
-        // --- UPDATED: Using Google Apps Script as a reliable image proxy ---
-        async function createFaceMatcher() {
-            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (0%)';
-            let completedCount = 0;
-
-            const promises = employees.map(emp => 
-                (async () => {
+        async function loadAllEmployeeDescriptors() {
+            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ...';
+            const labeledFaceDescriptors = await Promise.all(
+                employees.map(async (employee) => {
                     try {
-                        // Use our Google Apps Script as a proxy
-                        const proxyUrl = `${SCRIPT_URL}?action=getImage&url=${encodeURIComponent(emp.photoUrl)}`;
-                        
-                        const response = await fetch(proxyUrl);
-                        const data = await response.json();
-
-                        if (data.status !== 'success') {
-                            throw new Error(data.message || `Proxy failed for ${emp.name}`);
-                        }
-                        
-                        // face-api.js can load images directly from Base64 strings
-                        const img = await faceapi.fetchImage(data.base64Image);
-                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-                        
-                        if (detection && detection.descriptor) {
-                            return new faceapi.LabeledFaceDescriptor(emp.id, [detection.descriptor]);
-                        } else {
-                            console.warn(`រកមិនឃើញផ្ទៃមុខក្នុងរូបថតសម្រាប់: ${emp.name} (${emp.id})`);
+                        const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(employee.photoUrl.replace('file/d/', 'uc?id=').replace('/view?usp=sharing', ''))}`;
+                        const img = await faceapi.fetchImage(imageUrl);
+                        const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+                        if (!detections) {
+                            console.warn(`Could not find face for ${employee.name}`);
                             return null;
                         }
-                    } catch (error) {
-                        console.error(`បរាជ័យក្នុងការទាញរូបថតសម្រាប់ ${emp.name}:`, error);
+                        return new faceapi.LabeledFaceDescriptor(employee.id, [detections.descriptor]);
+                    } catch (e) {
+                        console.error(`Error processing image for ${employee.name}`, e);
                         return null;
-                    } finally {
-                        completedCount++;
-                        const progress = Math.round((completedCount / employees.length) * 100);
-                        loadingMessage.textContent = `កំពុងរៀបចំទិន្នន័យ... (${progress}%) | ${completedCount}/${employees.length}`;
                     }
-                })()
+                })
             );
-
-            const results = await Promise.all(promises);
-            const validDescriptors = results.filter(descriptor => descriptor !== null);
-
-            const successCount = validDescriptors.length;
-            const errorCount = employees.length - successCount;
-            console.log(`ការរៀបចំបានបញ្ចប់។ ជោគជ័យ: ${successCount}, បរាជ័យ: ${errorCount}`);
-
-
-            if (validDescriptors.length === 0) {
-                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ URL រូបថត និងការតភ្ជាប់អ៊ីនធឺណិត។");
-            }
-            
-            faceMatcher = new faceapi.FaceMatcher(validDescriptors, 0.5); 
+            return labeledFaceDescriptors.filter(d => d !== null);
         }
 
-        // --- Core Face Scanning Logic ---
-        async function startAutomaticFaceScan() {
+        // --- Face Scanning Logic ---
+        async function startAutomaticFaceScanner() {
+            cameraView.classList.remove('hidden');
+            resultView.classList.add('hidden');
+            scanMessageDiv.textContent = 'កំពុងរៀបចំកាមេរ៉ា...';
+            
             stopAllStreams();
-            loaderContainer.classList.add('hidden');
-            videoContainer.classList.remove('hidden');
-            scanMessage.textContent = 'សូមដាក់មុខឲ្យចំកាមេរ៉ា';
-
             try {
                 currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 faceVideo.srcObject = currentStream;
 
-                const canvas = faceapi.createCanvasFromMedia(faceVideo);
-                videoContainer.append(canvas);
-                const displaySize = { width: faceVideo.clientWidth, height: faceVideo.clientHeight };
-                faceapi.matchDimensions(canvas, displaySize);
+                scanMessageDiv.textContent = '';
 
-                detectionInterval = setInterval(async () => {
+                scanInterval = setInterval(async () => {
                     if (!faceMatcher) return;
 
-                    const detections = await faceapi.detectAllFaces(faceVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    const detections = await faceapi.detectSingleFace(faceVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                     
-                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-                    faceapi.draw.drawDetections(canvas, resizedDetections);
-
-                    if (detections.length > 0) {
-                        const bestMatch = faceMatcher.findBestMatch(detections[0].descriptor);
+                    if (detections) {
+                        const bestMatch = faceMatcher.findBestMatch(detections.descriptor);
                         if (bestMatch.label !== 'unknown') {
-                            handleSuccessfulScan(bestMatch.label);
+                            stopAllStreams();
+                            selectedEmployee = employees.find(emp => emp.id === bestMatch.label);
+                            if (selectedEmployee) {
+                                handleSuccessfulScan();
+                            }
                         } else {
-                             scanMessage.textContent = 'មិនស្គាល់ផ្ទៃមុខ... សូមព្យាយាមម្តងទៀត';
+                            scanMessageDiv.textContent = 'មិនស្គាល់ផ្ទៃមុខ';
                         }
                     } else {
-                        scanMessage.textContent = 'សូមដាក់មុខឲ្យចំកាមេរ៉ា';
+                        scanMessageDiv.textContent = '';
                     }
-                }, 500); // Scan every 500ms
+                }, 1500);
 
             } catch (err) {
-                scanMessage.textContent = 'មិនអាចបើកកាមេរ៉ាបានទេ';
+                scanMessageDiv.textContent = 'មិនអាចបើកកាមេរ៉ាបានទេ';
                 console.error("Camera access error:", err);
             }
         }
-        
-        async function handleSuccessfulScan(employeeId) {
-            clearInterval(detectionInterval);
-            stopAllStreams();
-            
-            selectedEmployee = employees.find(emp => emp.id === employeeId);
-            if (!selectedEmployee) {
-                console.error("Matched employee ID not found in the list:", employeeId);
-                window.location.reload();
-                return;
-            }
 
-            scanMessage.textContent = `ស្គាល់អត្តសញ្ញាណ៖ ${selectedEmployee.name}`;
+        function handleSuccessfulScan() {
+            cameraView.classList.add('hidden');
+            resultView.classList.remove('hidden');
+
+            document.getElementById('employee-photo').src = `https://images.weserv.nl/?url=${encodeURIComponent(selectedEmployee.photoUrl.replace('file/d/', 'uc?id=').replace('/view?usp=sharing', ''))}`;
+            document.getElementById('employee-name-display').textContent = selectedEmployee.name;
+            document.getElementById('employee-id-display').textContent = `ID: ${selectedEmployee.id}`;
+            
             speak(`សួស្ដី ${selectedEmployee.name}`);
             
-            await new Promise(resolve => setTimeout(resolve, 1500)); 
-
-            scanningStep.classList.add('hidden');
-            displayResultScreen();
-            await submitAttendance();
+            updateLogDisplay();
+            submitAttendance();
         }
 
-        // --- Data Submission and UI Display ---
-        function displayResultScreen() {
-             document.getElementById('employee-photo').src = selectedEmployee.photoUrl;
-             document.getElementById('employee-name-display').textContent = selectedEmployee.name;
-             document.getElementById('employee-id-display').textContent = `ID: ${selectedEmployee.id}`;
-             updateLogDisplay();
-             resultStep.classList.remove('hidden');
-        }
-
-        async function submitAttendance() {
+        // --- Data Submission ---
+        function submitAttendance() {
             const lastLog = getTodaysLog().pop();
             const action = (!lastLog || lastLog.action === 'Check Out') ? 'Check In' : 'Check Out';
 
-            resultMessage.textContent = `កំពុងបញ្ជូន ${action}...`;
-            resultMessage.className = 'text-center my-4 h-12 text-xl text-yellow-400';
+            messageDiv.textContent = `កំពុងបញ្ជូន ${action}...`;
+            messageDiv.className = 'text-center mt-4 h-12 text-yellow-400';
 
             const data = {
                 timestamp: new Date().toISOString(),
@@ -292,26 +241,33 @@
                 userAgent: navigator.userAgent
             };
 
-            try {
-                const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(data) });
-                const result = await response.json();
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                cache: 'no-cache',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(() => {
+                messageDiv.textContent = `${action} បានកត់ត្រាដោយជោគជ័យ!`;
+                messageDiv.className = 'text-center mt-4 h-12 text-green-500';
+                speak(action === 'Check In' ? 'បាន ស្កេន ចូល ជោគជ័យ' : 'បាន ស្កេន ចេញ ជោគជ័យ');
                 
-                if (result.status === 'success') {
-                    resultMessage.textContent = `${action} បានកត់ត្រាដោយជោគជ័យ!`;
-                    resultMessage.className = 'text-center my-4 h-12 text-xl text-green-500';
-                    speak(action === 'Check In' ? 'បានកត់ត្រា ការចូល' : 'បានកត់ត្រា ការចេញ');
-                    
-                    saveLog(action);
-                    updateLogDisplay();
-                } else {
-                    throw new Error(result.message || 'Unknown submission error');
-                }
-            } catch (error) {
+                saveLog(action);
+                updateLogDisplay();
+            })
+            .catch(error => {
                 console.error('Error submitting attendance:', error);
-                resultMessage.textContent = `មានបញ្ហាក្នុងការបញ្ជូនទិន្នន័យ។`;
-                resultMessage.className = 'text-center my-4 h-12 text-xl text-red-500';
+                messageDiv.textContent = `មានបញ្ហាក្នុងការបញ្ជូនទិន្នន័យ។`;
+                messageDiv.className = 'text-center mt-4 h-12 text-red-500';
                 speak('បរាជ័យ សូមព្យាយាមម្ដងទៀត');
-            }
+            })
+            .finally(() => {
+                // Reset to scanning screen after 5 seconds
+                setTimeout(() => {
+                    startAutomaticFaceScanner();
+                }, 5000);
+            });
         }
         
         // --- Local Log for UI ---
@@ -349,9 +305,9 @@
 
         // --- Utility Functions ---
         function stopAllStreams() {
-            if (detectionInterval) {
-                 clearInterval(detectionInterval);
-                 detectionInterval = null;
+            if (scanInterval) {
+                clearInterval(scanInterval);
+                scanInterval = null;
             }
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -359,16 +315,11 @@
             }
         }
         
-        scanAgainButton.addEventListener('click', () => window.location.reload());
-
         // --- Initialization ---
         async function initialize() {
-            if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-                 scanningStep.innerHTML = `<div class="bg-red-900 border border-red-600 p-6 rounded-lg">
-                     <h2 class="text-xl font-semibold text-red-300">បញ្ហាសុវត្ថិភាព</h2>
-                     <p class="mt-2 text-red-200">កម្មវិធីនេះត្រូវតែដំណើរការលើ HTTPS ដើម្បីអាចប្រើប្រាស់កាមេរ៉ាបាន។</p>
-                 </div>`;
-                 return;
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                loadingScreen.innerHTML = `<div class="bg-red-900 border border-red-600 p-6 rounded-lg"><h2 class="text-xl font-semibold text-red-300">បញ្ហាសុវត្ថិភាព</h2><p class="mt-2 text-red-200">កម្មវិធីនេះត្រូវតែដំណើរការលើ HTTPS។</p></div>`;
+                return;
             }
             
             try {
@@ -377,85 +328,27 @@
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-
-                loadingMessage.textContent = 'កំពុងទាញទិន្នន័យបុគ្គលិក...';
+                
                 await fetchEmployeeData();
 
-                await createFaceMatcher();
+                const labeledDescriptors = await loadAllEmployeeDescriptors();
+                if (labeledDescriptors.length === 0) {
+                    loadingMessage.textContent = 'មិនអាចរៀបចំទិន្នន័យផ្ទៃមុខបានទេ។';
+                    return;
+                }
+                faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5); // 0.5 is the distance threshold
+                
+                loadingScreen.classList.add('hidden');
+                mainView.classList.remove('hidden');
+                startAutomaticFaceScanner();
 
-                await startAutomaticFaceScan();
-
-            } catch (error) {
+            } catch(error) {
+                loadingScreen.innerHTML = `<div class="bg-red-900 border border-red-600 p-6 rounded-lg"><h2 class="text-xl font-semibold text-red-300">ការរៀបចំប្រព័ន្ធបរាជ័យ</h2><p class="mt-2 text-red-200">${error.message}</p></div>`;
                 console.error("Initialization failed:", error);
-                loadingMessage.textContent = `ការចាប់ផ្ដើមបរាជ័យ: ${error.message}`;
-                loadingMessage.parentElement.querySelector('.loader').classList.add('hidden');
             }
         }
 
         initialize();
-
-        /*
-        ====================================================================================================
-        !!! សូមអាន !!!  កូដសម្រាប់ Google Apps Script (Code.gs)
-        ====================================================================================================
-        
-        សូម Copy កូដខាងក្រោមនេះทั้งหมด ហើយយកទៅ Paste ជំនួសកូដចាស់នៅក្នុងไฟล์ Code.gs របស់អ្នក។
-        បន្ទាប់មក សូម Deploy ឡើងវិញ (Deploy > New deployment...)។
-        
-        ----------------------------------------------------------------------------------------------------
-
-        function doGet(e) {
-          // This function now acts as an image proxy to solve CORS issues.
-          if (e.parameter.action === 'getImage' && e.parameter.url) {
-            try {
-              const imageUrl = e.parameter.url;
-              const response = UrlFetchApp.fetch(imageUrl);
-              const blob = response.getBlob();
-              const base64Image = "data:" + blob.getContentType() + ";base64," + Utilities.encodeBase64(blob.getBytes());
-              
-              return ContentService.createTextOutput(JSON.stringify({ status: 'success', base64Image: base64Image }))
-                .setMimeType(ContentService.MimeType.JSON);
-
-            } catch (error) {
-              return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
-                .setMimeType(ContentService.MimeType.JSON);
-            }
-          }
-          
-          // Default response for other GET requests if any
-          return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid GET request' }))
-            .setMimeType(ContentService.MimeType.JSON);
-        }
-
-        function doPost(e) {
-          try {
-            const sheet = SpreadsheetApp.openById("YOUR_GOOGLE_SHEET_ID_HERE").getSheetByName("AttendanceLog"); // <-- IMPORTANT: Replace with your Sheet ID and create a sheet named "AttendanceLog"
-            const data = JSON.parse(e.postData.contents);
-
-            // Create a header row if the sheet is empty
-            if (sheet.getLastRow() === 0) {
-              sheet.appendRow(["Timestamp", "Employee ID", "Employee Name", "Action", "User Agent"]);
-            }
-            
-            sheet.appendRow([
-              data.timestamp,
-              data.employeeId,
-              data.employeeName,
-              data.action,
-              data.userAgent
-            ]);
-            
-            return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Attendance recorded' }))
-              .setMimeType(ContentService.MimeType.JSON);
-
-          } catch (error) {
-            return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
-              .setMimeType(ContentService.MimeType.JSON);
-          }
-        }
-
-        */
-
     </script>
 </body>
 </html>
