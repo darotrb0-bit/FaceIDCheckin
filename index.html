@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ប្រព័ន្ធគ្រប់គ្រងវត្តមានបុគ្គលិក</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Kantumruy Pro', sans-serif;
+            touch-action: manipulation;
+        }
+        .loader {
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: auto;
+            border-radius: 0.5rem;
+            overflow: hidden; /* Ensures canvas stays within borders */
+        }
+        video {
+            width: 100%;
+            transform: scaleX(-1); /* Mirror the video for a natural feel */
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: scaleX(-1); /* Mirror the canvas to match the video */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+    <div id="main-container" class="w-full max-w-md mx-auto">
+        
+        <!-- Step 1: Loading and Face Scanning -->
+        <div id="scanning-step" class="text-center bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div id="loader-container">
+                <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-24 w-24 mx-auto mb-4"></div>
+                <h2 class="text-xl font-semibold text-teal-300">កំពុងរៀបចំប្រព័ន្ធ...</h2>
+                <p id="loading-message" class="text-gray-400 h-6">សូមរង់ចាំបន្តិច</p>
+            </div>
+            <div id="video-container" class="hidden mt-4">
+                <video id="face-video" playsinline autoplay muted></video>
+            </div>
+             <p id="scan-message" class="text-center mt-4 h-6 text-yellow-400"></p>
+        </div>
+
+        <!-- Step 2: Result Screen -->
+        <div id="result-step" class="hidden text-center bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="mb-4">
+                <img id="employee-photo" class="w-32 h-32 rounded-full mx-auto border-4 border-teal-400 object-cover" src="https://placehold.co/128x128/334155/e2e8f0?text=..." alt="Employee Photo">
+                <h2 id="employee-name-display" class="text-2xl font-bold mt-4"></h2>
+                <p id="employee-id-display" class="text-gray-400 text-lg"></p>
+            </div>
+            <p id="result-message" class="text-center my-4 h-12 text-xl"></p>
+            <div id="attendance-log" class="mt-4 text-left bg-gray-700 p-4 rounded-lg max-h-48 overflow-y-auto">
+                <h3 class="font-bold mb-2 text-teal-300">កំណត់ត្រាវត្តមានថ្ងៃនេះ</h3>
+                <div id="log-content"></div>
+            </div>
+            <button id="scan-again-button" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition duration-300">
+                ស្កេនម្ដងទៀត
+            </button>
+        </div>
+        
+    </div>
+    
+    <script>
+        // --- DOM Elements ---
+        const faceVideo = document.getElementById('face-video');
+        const loadingMessage = document.getElementById('loading-message');
+        const scanMessage = document.getElementById('scan-message');
+        const resultMessage = document.getElementById('result-message');
+        const scanningStep = document.getElementById('scanning-step');
+        const resultStep = document.getElementById('result-step');
+        const videoContainer = document.getElementById('video-container');
+        const loaderContainer = document.getElementById('loader-container');
+        const logContent = document.getElementById('log-content');
+        const scanAgainButton = document.getElementById('scan-again-button');
+
+        // --- Global State ---
+        let employees = [];
+        let selectedEmployee = null;
+        let faceMatcher = null;
+        let currentStream;
+        let khmerVoice = null;
+        let detectionInterval;
+
+        // --- Configuration ---
+        const GOOGLE_SHEET_ID = '1eRyPoifzyvB4oBmruNyXcoKMKPRqjk6xDD6-bPNW6pc';
+        const GOOGLE_SHEET_NAME = 'DIList';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVk-h1hW8g-_Z-rViFVzzRN8h1b9fNjoleNjj1gaHd42X3C66vVJi1HJARXYTB81rG/exec';
+
+        // --- Audio Functions ---
+        function loadVoices() {
+            const voices = window.speechSynthesis.getVoices();
+            khmerVoice = voices.find(voice => voice.lang === 'km-KH');
+            if (!khmerVoice) console.warn('Khmer (km-KH) voice not found.');
+        }
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        
+        function speak(text, options = {}) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'km-KH';
+                if (khmerVoice) utterance.voice = khmerVoice;
+                utterance.rate = options.rate || 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+        
+        // --- Data Fetching and Preparation ---
+        async function fetchEmployeeData() {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${GOOGLE_SHEET_NAME}&headers=1`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const csvText = await response.text();
+                
+                const rows = csvText.split('\n').map(row => row.split('","').map(cell => cell.replace(/"/g, '')));
+                employees = rows.slice(8) 
+                    .map(row => ({
+                        id: row[4],       // Column E
+                        name: row[11],    // Column L
+                        photoUrl: row[26] // Column AA
+                    }))
+                    .filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.includes('drive.google.com'));
+            } catch (error) {
+                console.error('Error fetching employee data:', error);
+                loadingMessage.textContent = 'បរាជ័យក្នុងការទាញទិន្នន័យបុគ្គលិក។';
+                throw error;
+            }
+        }
+
+        async function createFaceMatcher() {
+            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (១/២)';
+            const labeledFaceDescriptors = [];
+            let loadedCount = 0;
+
+            for (const emp of employees) {
+                try {
+                    // Extract file ID from Google Drive URL to use with proxy
+                    const fileIdMatch = emp.photoUrl.match(/d\/(.+?)\//);
+                    if (!fileIdMatch) {
+                        console.warn(`Invalid Google Drive URL for ${emp.name}: ${emp.photoUrl}`);
+                        continue;
+                    }
+                    const fileId = fileIdMatch[1];
+                    const proxyUrl = `${SCRIPT_URL}?action=getImage&fileId=${fileId}`;
+                    
+                    const response = await fetch(proxyUrl);
+                    const data = await response.json();
+
+                    if (data.status !== 'success') throw new Error(data.message);
+
+                    const img = await faceapi.fetchImage(data.base64Image);
+                    const detections = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                    
+                    if (detections) {
+                        labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptor(emp.id, [detections.descriptor]));
+                    } else {
+                        console.warn(`No face detected for employee: ${emp.name}`);
+                    }
+                } catch (error) {
+                    console.error(`Failed to process image for ${emp.name}:`, error);
+                }
+                loadedCount++;
+                loadingMessage.textContent = `កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (${loadedCount}/${employees.length})`;
+            }
+
+            if (labeledFaceDescriptors.length === 0) {
+                 throw new Error("No valid face descriptors could be created. Check photo URLs and permissions.");
+            }
+
+            // A lower distance threshold means a stricter match (e.g., 0.5 is a good starting point)
+            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); 
+        }
+
+        // --- Core Face Scanning Logic ---
+        async function startAutomaticFaceScan() {
+            stopAllStreams();
+            loaderContainer.classList.add('hidden');
+            videoContainer.classList.remove('hidden');
+            scanMessage.textContent = 'សូមដាក់មុខឲ្យចំកាមេរ៉ា';
+
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                faceVideo.srcObject = currentStream;
+
+                const canvas = faceapi.createCanvasFromMedia(faceVideo);
+                videoContainer.append(canvas);
+                const displaySize = { width: faceVideo.clientWidth, height: faceVideo.clientHeight };
+                faceapi.matchDimensions(canvas, displaySize);
+
+                detectionInterval = setInterval(async () => {
+                    if (!faceMatcher) return;
+
+                    const detections = await faceapi.detectAllFaces(faceVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    
+                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+
+                    if (detections.length > 0) {
+                        const bestMatch = faceMatcher.findBestMatch(detections[0].descriptor);
+                        if (bestMatch.label !== 'unknown') {
+                            handleSuccessfulScan(bestMatch.label);
+                        } else {
+                             scanMessage.textContent = 'មិនស្គាល់ផ្ទៃមុខ... សូមព្យាយាមម្តងទៀត';
+                        }
+                    } else {
+                        scanMessage.textContent = 'សូមដាក់មុខឲ្យចំកាមេរ៉ា';
+                    }
+                }, 500); // Scan every 500ms
+
+            } catch (err) {
+                scanMessage.textContent = 'មិនអាចបើកកាមេរ៉ាបានទេ';
+                console.error("Camera access error:", err);
+            }
+        }
+        
+        async function handleSuccessfulScan(employeeId) {
+            clearInterval(detectionInterval);
+            stopAllStreams();
+            
+            selectedEmployee = employees.find(emp => emp.id === employeeId);
+            if (!selectedEmployee) {
+                console.error("Matched employee ID not found in the list:", employeeId);
+                window.location.reload(); // Restart if something went wrong
+                return;
+            }
+
+            scanMessage.textContent = `ស្គាល់អត្តសញ្ញាណ៖ ${selectedEmployee.name}`;
+            speak(`សួស្ដី ${selectedEmployee.name}`);
+            
+            // Wait a moment before submitting
+            await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+            scanningStep.classList.add('hidden');
+            displayResultScreen();
+            await submitAttendance();
+        }
+
+        // --- Data Submission and UI Display ---
+        function displayResultScreen() {
+             document.getElementById('employee-photo').src = selectedEmployee.photoUrl.replace("view?usp=sharing", "preview");
+             document.getElementById('employee-name-display').textContent = selectedEmployee.name;
+             document.getElementById('employee-id-display').textContent = `ID: ${selectedEmployee.id}`;
+             updateLogDisplay();
+             resultStep.classList.remove('hidden');
+        }
+
+        async function submitAttendance() {
+            const lastLog = getTodaysLog().pop();
+            const action = (!lastLog || lastLog.action === 'Check Out') ? 'Check In' : 'Check Out';
+
+            resultMessage.textContent = `កំពុងបញ្ជូន ${action}...`;
+            resultMessage.className = 'text-center my-4 h-12 text-xl text-yellow-400';
+
+            const data = {
+                timestamp: new Date().toISOString(),
+                employeeId: selectedEmployee.id,
+                employeeName: selectedEmployee.name,
+                action: action,
+                userAgent: navigator.userAgent
+            };
+
+            try {
+                const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(data) });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    resultMessage.textContent = `${action} បានកត់ត្រាដោយជោគជ័យ!`;
+                    resultMessage.className = 'text-center my-4 h-12 text-xl text-green-500';
+                    speak(action === 'Check In' ? 'បានកត់ត្រា ការចូល' : 'បានកត់ត្រា ការចេញ');
+                    
+                    saveLog(action);
+                    updateLogDisplay();
+                } else {
+                    throw new Error(result.message || 'Unknown submission error');
+                }
+            } catch (error) {
+                console.error('Error submitting attendance:', error);
+                resultMessage.textContent = `មានបញ្ហាក្នុងការបញ្ជូនទិន្នន័យ។`;
+                resultMessage.className = 'text-center my-4 h-12 text-xl text-red-500';
+                speak('បរាជ័យ សូមព្យាយាមម្ដងទៀត');
+            }
+        }
+        
+        // --- Local Log for UI ---
+        function saveLog(action) {
+            const logs = JSON.parse(localStorage.getItem('attendanceLogs') || '{}');
+            const today = new Date().toISOString().slice(0, 10);
+            if (!logs[selectedEmployee.id]) logs[selectedEmployee.id] = {};
+            if (!logs[selectedEmployee.id][today]) logs[selectedEmployee.id][today] = [];
+
+            const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit'});
+            logs[selectedEmployee.id][today].push({ action, time });
+            localStorage.setItem('attendanceLogs', JSON.stringify(logs));
+        }
+
+        function getTodaysLog() {
+            if (!selectedEmployee) return [];
+            const logs = JSON.parse(localStorage.getItem('attendanceLogs') || '{}');
+            const today = new Date().toISOString().slice(0, 10);
+            return (logs[selectedEmployee.id] && logs[selectedEmployee.id][today]) ? logs[selectedEmployee.id][today] : [];
+        }
+
+        function updateLogDisplay() {
+            const todaysLog = getTodaysLog();
+            if (todaysLog.length === 0) {
+                logContent.innerHTML = '<p class="text-gray-400">មិនទាន់មានកំណត់ត្រាសម្រាប់ថ្ងៃនេះ</p>';
+            } else {
+                logContent.innerHTML = todaysLog.map(log => `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-semibold ${log.action === 'Check In' ? 'text-green-400' : 'text-orange-400'}">${log.action}</span>
+                        <span>${log.time}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // --- Utility Functions ---
+        function stopAllStreams() {
+            if (detectionInterval) {
+                 clearInterval(detectionInterval);
+                 detectionInterval = null;
+            }
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+        }
+        
+        scanAgainButton.addEventListener('click', () => window.location.reload());
+
+        // --- Initialization ---
+        async function initialize() {
+            if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                 scanningStep.innerHTML = `<div class="bg-red-900 border border-red-600 p-6 rounded-lg">
+                     <h2 class="text-xl font-semibold text-red-300">បញ្ហាសុវត្ថិភាព</h2>
+                     <p class="mt-2 text-red-200">កម្មវិធីនេះត្រូវតែដំណើរការលើ HTTPS ដើម្បីអាចប្រើប្រាស់កាមេរ៉ាបាន។</p>
+                 </div>`;
+                 return;
+            }
+            
+            try {
+                loadingMessage.textContent = 'កំពុងផ្ទុក Model សម្គាល់មុខ...';
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/weights/';
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+
+                loadingMessage.textContent = 'កំពុងទាញទិន្នន័យបុគ្គលិក...';
+                await fetchEmployeeData();
+
+                await createFaceMatcher();
+
+                await startAutomaticFaceScan();
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                loadingMessage.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
+                loadingMessage.parentElement.querySelector('.loader').classList.add('hidden');
+            }
+        }
+
+        // --- Google Apps Script Proxy for Images ---
+        // Make sure your Google Apps Script has a doGet function like this:
+        /*
+        function doGet(e) {
+          if (e.parameter.action === 'getImage' && e.parameter.fileId) {
+            try {
+              const file = DriveApp.getFileById(e.parameter.fileId);
+              const blob = file.getBlob();
+              const base64Image = "data:" + blob.getContentType() + ";base64," + Utilities.encodeBase64(blob.getBytes());
+              return ContentService.createTextOutput(JSON.stringify({ status: 'success', base64Image: base64Image }))
+                .setMimeType(ContentService.MimeType.JSON);
+            } catch (error) {
+              return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
+                .setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+          return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid request' }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+        */
+
+        initialize();
+    </script>
+</body>
+</html>
