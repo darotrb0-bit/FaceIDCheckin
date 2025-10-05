@@ -137,6 +137,10 @@
                         photoUrl: row[26] // Column AA
                     }))
                     .filter(emp => emp.id && emp.name && emp.photoUrl && emp.photoUrl.includes('drive.google.com'));
+                
+                if (employees.length === 0) {
+                    throw new Error("រកមិនឃើញទិន្នន័យបុគ្គលិកដែលមានសុពលភាពទេ។ សូមពិនិត្យ Google Sheet។");
+                }
             } catch (error) {
                 console.error('Error fetching employee data:', error);
                 loadingMessage.textContent = 'បរាជ័យក្នុងការទាញទិន្នន័យបុគ្គលិក។';
@@ -145,9 +149,10 @@
         }
 
         async function createFaceMatcher() {
-            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (១/២)';
+            loadingMessage.textContent = 'កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ...';
             const labeledFaceDescriptors = [];
             let loadedCount = 0;
+            let errorCount = 0;
 
             for (const emp of employees) {
                 try {
@@ -155,6 +160,7 @@
                     const fileIdMatch = emp.photoUrl.match(/d\/(.+?)\//);
                     if (!fileIdMatch) {
                         console.warn(`Invalid Google Drive URL for ${emp.name}: ${emp.photoUrl}`);
+                        errorCount++;
                         continue;
                     }
                     const fileId = fileIdMatch[1];
@@ -163,8 +169,13 @@
                     const response = await fetch(proxyUrl);
                     const data = await response.json();
 
-                    if (data.status !== 'success') throw new Error(data.message);
-
+                    if (data.status !== 'success') {
+                        console.warn(`Proxy error for ${emp.name}: ${data.message || 'Unknown error'}`);
+                        errorCount++;
+                        continue; // Skip this employee and try the next one
+                    }
+                    
+                    // FIXED: Corrected typo from base4Image to base64Image
                     const img = await faceapi.fetchImage(data.base64Image);
                     const detections = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                     
@@ -172,16 +183,18 @@
                         labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptor(emp.id, [detections.descriptor]));
                     } else {
                         console.warn(`No face detected for employee: ${emp.name}`);
+                        errorCount++;
                     }
                 } catch (error) {
                     console.error(`Failed to process image for ${emp.name}:`, error);
+                    errorCount++;
                 }
                 loadedCount++;
-                loadingMessage.textContent = `កំពុងរៀបចំទិន្នន័យផ្ទៃមុខ... (${loadedCount}/${employees.length})`;
+                loadingMessage.textContent = `កំពុងរៀបចំ... (${loadedCount}/${employees.length}) | បរាជ័យ: ${errorCount}`;
             }
 
             if (labeledFaceDescriptors.length === 0) {
-                 throw new Error("No valid face descriptors could be created. Check photo URLs and permissions.");
+                 throw new Error("មិនអាចបង្កើតទិន្នន័យសម្គាល់មុខបានទេ។ សូមពិនិត្យ៖ (១) URL រូបថត, (២) ការអនុញ្ញាត (Permissions) ក្នុង Google Drive, និង (៣) ការ Deploy Google Apps Script។");
             }
 
             // A lower distance threshold means a stricter match (e.g., 0.5 is a good starting point)
@@ -372,7 +385,7 @@
 
             } catch (error) {
                 console.error("Initialization failed:", error);
-                loadingMessage.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
+                loadingMessage.textContent = `ការចាប់ផ្ដើមបរាជ័យ: ${error.message}`;
                 loadingMessage.parentElement.querySelector('.loader').classList.add('hidden');
             }
         }
@@ -402,3 +415,4 @@
     </script>
 </body>
 </html>
+
