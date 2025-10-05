@@ -6,10 +6,10 @@
     <title>ប្រព័ន្ធវត្តមានបុគ្គលិក Face Recognition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Koulen&family=Moul&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Koulen&family=Moul&family=Noto+Sans+Khmer:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: 'Koulen', sans-serif;
+            font-family: 'Noto Sans Khmer', 'Koulen', sans-serif;
         }
         #video, #overlay {
             position: absolute;
@@ -17,75 +17,68 @@
             left: 0;
             border-radius: 0.5rem;
         }
+        .log-entry {
+            transition: all 0.5s ease-in-out;
+            opacity: 0;
+            transform: translateX(20px);
+        }
+        .log-entry.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-4xl bg-white rounded-lg shadow-xl p-6">
-        <h1 class="text-3xl font-bold text-center text-blue-600 mb-4">ប្រព័ន្ធគ្រប់គ្រងវត្តមានបុគ្គលិក</h1>
+    <div class="w-full max-w-6xl bg-white rounded-lg shadow-xl p-6">
+        <h1 class="text-3xl font-bold text-center text-blue-600 mb-4" style="font-family: 'Moul', cursive;">ប្រព័ន្ធគ្រប់គ្រងវត្តមានស្វ័យប្រវត្តិ</h1>
         
-        <div class="grid md:grid-cols-2 gap-6 items-center">
+        <div class="grid md:grid-cols-2 gap-8 items-start">
             <!-- Camera View -->
-            <div class="relative w-full aspect-square bg-gray-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
-                <video id="video" autoplay muted playsinline></video>
-                <canvas id="overlay"></canvas>
-                <div id="loader" class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-20">
-                    <div class="loader-spinner animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
-                    <p id="loader-text" class="mt-4 text-gray-700 font-semibold">កំពុងរៀបចំប្រព័ន្ធ...</p>
-                </div>
-            </div>
-
-            <!-- Information Panel -->
-            <div id="info-panel" class="flex flex-col items-center justify-center h-full p-4">
-                <div id="default-message" class="text-center text-gray-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <p class="mt-2">សូមដាក់មុខរបស់លោកអ្នកនៅមុខកាមេរ៉ា</p>
-                    <p class="text-sm">ប្រព័ន្ធនឹងធ្វើការស្គាល់ដោយស្វ័យប្រវត្តិ</p>
-                </div>
-
-                <div id="employee-card" class="hidden text-center w-full">
-                    <img id="employee-photo" src="https://placehold.co/150x150/EFEFEF/AAAAAA?text=រូបថត" class="w-32 h-32 rounded-full mx-auto shadow-lg border-4 border-white object-cover mb-4">
-                    <h2 id="employee-name" class="text-2xl font-bold text-gray-800">ឈ្មោះបុគ្គលិក</h2>
-                    <p id="employee-id" class="text-lg text-gray-600">អត្តលេខ</p>
-                    <div class="mt-6 flex justify-center space-x-4">
-                        <button id="check-in-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed">Check In</button>
-                        <button id="check-out-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed">Check Out</button>
+            <div class="w-full">
+                <div class="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
+                    <video id="video" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                    <canvas id="overlay"></canvas>
+                    <div id="loader" class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-20">
+                        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
+                        <p id="loader-text" class="mt-4 text-gray-700 font-semibold">កំពុងរៀបចំប្រព័ន្ធ...</p>
                     </div>
                 </div>
-                 <div id="status-message" class="mt-4 text-center font-semibold h-6"></div>
+                <p class="text-center text-gray-500 mt-2">សូមដាក់មុខរបស់លោកអ្នកនៅមុខកាមេរ៉ា</p>
+            </div>
+
+            <!-- Attendance Log Panel -->
+            <div id="log-panel" class="w-full h-[360px] md:h-full flex flex-col">
+                 <h2 class="text-xl font-bold text-gray-700 mb-3 text-center border-b-2 pb-2">បញ្ជីវត្តមានថ្ងៃនេះ</h2>
+                 <div id="log-container" class="space-y-2 overflow-y-auto flex-grow pr-2">
+                    <!-- Log entries will be added here dynamically -->
+                    <div id="default-log-message" class="flex items-center justify-center h-full text-gray-400">
+                        <span>មិនទាន់មានទិន្នន័យនៅឡើយទេ...</span>
+                    </div>
+                 </div>
             </div>
         </div>
     </div>
 
     <script>
         // ================== CONFIGURATION ==================
-        // !!! សំខាន់៖ សូមបិទភ្ជាប់ Web App URL ដែលបានពី Google Apps Script នៅទីនេះ
         const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxwSJYdzVMweOyJbPJ-ChnRE01vX0rS04tlfYPPp687_y4_LP4ilFPwBB5joPe-_91u/exec';
+        const RECOGNITION_COOLDOWN = 30000; // 30 seconds cooldown for the same person
+        const MAX_LOG_ENTRIES = 8;
         // ===============================================
 
         const video = document.getElementById('video');
         const overlay = document.getElementById('overlay');
         const loader = document.getElementById('loader');
         const loaderText = document.getElementById('loader-text');
+        const logContainer = document.getElementById('log-container');
+        const defaultLogMessage = document.getElementById('default-log-message');
 
-        const defaultMessage = document.getElementById('default-message');
-        const employeeCard = document.getElementById('employee-card');
-        const employeePhoto = document.getElementById('employee-photo');
-        const employeeName = document.getElementById('employee-name');
-        const employeeId = document.getElementById('employee-id');
-        const checkInBtn = document.getElementById('check-in-btn');
-        const checkOutBtn = document.getElementById('check-out-btn');
-        const statusMessage = document.getElementById('status-message');
-
-        let labeledFaceDescriptors = null;
+        let employeeData = [];
         let faceMatcher = null;
-        let currentRecognizedEmployee = null;
         let recognitionInterval = null;
+        const recentlyProcessed = new Map();
 
-        // 1. Start video stream
         async function startVideo() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
@@ -96,7 +89,6 @@
             }
         }
         
-        // 2. Load Face-API models
         async function loadModels() {
             const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
             loaderText.textContent = 'កំពុងទាញយក Models...';
@@ -105,103 +97,101 @@
             await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         }
 
-        // 3. Get employee data and compute face descriptors
         async function getLabeledFaceDescriptors() {
             loaderText.textContent = 'កំពុងទាញយកបញ្ជីបុគ្គលិក...';
             try {
-                // Fetch employee data from Google Apps Script Web App (doGet)
                 const response = await fetch(WEB_APP_URL);
-                if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
-                }
-                const employees = await response.json();
+                if (!response.ok) throw new Error(`Network response error: ${response.statusText}`);
                 
-                loaderText.textContent = `រកឃើញ ${employees.length} នាក់។ កំពុងវិភាគរូបថត...`;
+                employeeData = await response.json();
+                loaderText.textContent = `រកឃើញ ${employeeData.length} នាក់។ កំពុងវិភាគរូបថត...`;
 
-                return Promise.all(
-                    employees.map(async (employee, index) => {
-                        // Update progress
-                        const progress = `(${index + 1}/${employees.length}) ${employee.name}`;
-                        loaderText.textContent = `កំពុងវិភាគ៖ ${progress}`;
-                        console.log(`Processing: ${progress}`);
-                        
-                        // To get around CORS issues with some image hosts, we use a proxy.
-                        // For simple cases, we can try fetching directly. If it fails, a proxy is needed.
-                        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                        
+                const descriptors = await Promise.all(
+                    employeeData.map(async (employee, index) => {
+                        loaderText.textContent = `កំពុងវិភាគ៖ (${index + 1}/${employeeData.length}) ${employee.name}`;
                         try {
                            const img = await faceapi.fetchImage(employee.photoUrl);
-                           const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-                           if (!detections) {
-                               console.warn(`Could not detect face for ${employee.name}`);
-                               return null;
-                           }
-                           const descriptors = [detections.descriptor];
-                           return new faceapi.LabeledFaceDescriptors(employee.id, descriptors);
+                           const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+                           if (!detection) return null;
+                           return new faceapi.LabeledFaceDescriptors(employee.id, [detection.descriptor]);
                         } catch (e) {
-                           console.error(`Error processing image for ${employee.name} at ${employee.photoUrl}`, e);
+                           console.error(`Error processing image for ${employee.name}`, e);
                            return null;
                         }
                     })
                 );
+                return descriptors.filter(d => d !== null);
 
             } catch (error) {
-                console.error('Failed to fetch employee data:', error);
+                console.error('Failed to fetch or process employee data:', error);
                 loaderText.textContent = 'បរាជ័យក្នុងការទាញយកទិន្នន័យបុគ្គលិក។';
-                return null;
+                return [];
             }
         }
 
-        // Handle Check-in/Check-out button clicks
-        async function handleAttendance(action) {
-            if (!currentRecognizedEmployee) return;
+        function addLogEntry(data) {
+            if(defaultLogMessage) {
+                defaultLogMessage.style.display = 'none';
+            }
+
+            const logId = `log-${Date.now()}`;
+            const actionText = data.action === 'checkin' ? 'Check In' : 'Check Out';
+            const actionColor = data.action === 'checkin' ? 'text-green-600' : 'text-red-600';
+            const time = new Date(data.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            const logElement = document.createElement('div');
+            logElement.id = logId;
+            logElement.className = 'log-entry flex items-center bg-gray-50 p-2 rounded-lg shadow-sm border';
+            logElement.innerHTML = `
+                <img src="${data.photoUrl}" onerror="this.src='https://placehold.co/60x60/EFEFEF/AAAAAA?text=Error'" class="w-12 h-12 rounded-full object-cover border-2 border-gray-200">
+                <div class="flex-grow ml-3">
+                    <p class="font-bold text-gray-800">${data.name}</p>
+                    <p class="text-sm text-gray-500">${data.id}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-semibold ${actionColor}">${actionText}</p>
+                    <p class="text-xs text-gray-500">${time}</p>
+                </div>
+            `;
             
-            checkInBtn.disabled = true;
-            checkOutBtn.disabled = true;
-            statusMessage.textContent = 'កំពុងដំណើរការ...';
-            statusMessage.classList.remove('text-green-600', 'text-red-600');
+            logContainer.prepend(logElement);
+            
+            // Trigger animation
+            setTimeout(() => document.getElementById(logId).classList.add('visible'), 50);
+
+            // Maintain max log entries
+            if (logContainer.children.length > MAX_LOG_ENTRIES) {
+                logContainer.lastChild.remove();
+            }
+        }
+
+        async function processRecognition(employeeId) {
+            // Set cooldown
+            recentlyProcessed.set(employeeId, Date.now());
 
             try {
                 const response = await fetch(WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // Apps Script web apps often need this for simple POST
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        id: currentRecognizedEmployee.id,
-                        action: action // 'checkin' or 'checkout'
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: employeeId })
                 });
+
+                if (!response.ok) throw new Error('Failed to record attendance');
                 
-                // Since no-cors mode doesn't allow reading response, we assume success
-                // A more advanced setup would need to handle JSONP or proper CORS on Apps Script
-                const successMessage = (action === 'checkin') ? 'Check In បានជោគជ័យ!' : 'Check Out បានជោគជ័យ!';
-                statusMessage.textContent = successMessage;
-                statusMessage.classList.add('text-green-600');
-                
-                // Reset after a few seconds
-                setTimeout(() => {
-                    resetUI();
-                }, 5000);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    console.log('Success:', result);
+                    addLogEntry(result);
+                } else {
+                    console.warn('Attendance already recorded for today:', result.message);
+                }
 
             } catch (error) {
-                console.error('Error recording attendance:', error);
-                statusMessage.textContent = 'មានបញ្ហាក្នុងការកត់ត្រា។';
-                statusMessage.classList.add('text-red-600');
-                checkInBtn.disabled = false;
-                checkOutBtn.disabled = false;
+                console.error('Error processing recognition:', error);
             }
         }
 
-        function resetUI() {
-            employeeCard.classList.add('hidden');
-            defaultMessage.classList.remove('hidden');
-            statusMessage.textContent = '';
-            currentRecognizedEmployee = null;
-        }
-
-        // Main recognition loop
         function startRecognition() {
             recognitionInterval = setInterval(async () => {
                 if (!faceMatcher) return;
@@ -209,12 +199,13 @@
                 const canvasSize = { width: video.videoWidth, height: video.videoHeight };
                 faceapi.matchDimensions(overlay, canvasSize);
 
-                const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+                const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+                                                .withFaceLandmarks()
+                                                .withFaceDescriptors();
                 const resizedDetections = faceapi.resizeResults(detections, canvasSize);
 
                 overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
 
-                let recognized = false;
                 for (const detection of resizedDetections) {
                     const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
                     const box = detection.detection.box;
@@ -222,75 +213,36 @@
                     drawBox.draw(overlay);
 
                     if (bestMatch.label !== 'unknown') {
-                        recognized = true;
-                        // Find employee details from the fetched list
-                        // This assumes employee data is available globally or can be re-fetched
-                        // For efficiency, we should have it stored.
-                        const employeeInfo = faceMatcher.labeledDescriptors.find(ld => ld.label === bestMatch.label);
-                        if (employeeInfo) {
-                           // This is a simplified way; ideally, we'd have the full employee list.
-                           // For now, we only have the ID (label).
-                           // Let's assume the ID format is "E-123 - John Doe"
-                           // We need to fetch the full data again, which is inefficient.
-                           // A better way is to pass the full employee list down.
-                           // Let's just show the ID for now.
-                           
-                           // Find the original employee object to display full info
-                           // Let's assume we can find it in `labeledFaceDescriptors`.
-                           // This part needs the full employee list available.
-                           // Let's store it from the fetch.
-                           // ... This logic is complex without a global employee list.
-                           
-                           // Let's just update the UI
-                           if (currentRecognizedEmployee?.id !== bestMatch.label) {
-                               fetch(WEB_APP_URL)
-                                  .then(res => res.json())
-                                  .then(employees => {
-                                      const matchedEmployee = employees.find(emp => emp.id === bestMatch.label);
-                                      if (matchedEmployee) {
-                                        currentRecognizedEmployee = matchedEmployee;
-                                        employeeName.textContent = matchedEmployee.name;
-                                        employeeId.textContent = matchedEmployee.id;
-                                        employeePhoto.src = matchedEmployee.photoUrl;
-                                        employeeCard.classList.remove('hidden');
-                                        defaultMessage.classList.add('hidden');
-                                        checkInBtn.disabled = false;
-                                        checkOutBtn.disabled = false;
-                                      }
-                                  });
-                           }
+                        const employeeId = bestMatch.label;
+                        const lastProcessedTime = recentlyProcessed.get(employeeId);
+                        
+                        // Check cooldown
+                        if (!lastProcessedTime || (Date.now() - lastProcessedTime > RECOGNITION_COOLDOWN)) {
+                            processRecognition(employeeId);
                         }
                     }
                 }
-                if (!recognized && currentRecognizedEmployee) {
-                    resetUI();
-                }
-
-            }, 200);
+            }, 1000); // Scan every second
         }
 
-        // Initialization function
         async function initialize() {
             await startVideo();
             video.addEventListener('loadedmetadata', async () => {
                 await loadModels();
-                const descriptors = await getLabeledFaceDescriptors();
-                const filteredDescriptors = descriptors.filter(d => d !== null);
+                const labeledDescriptors = await getLabeledFaceDescriptors();
 
-                if (filteredDescriptors.length > 0) {
-                    faceMatcher = new faceapi.FaceMatcher(filteredDescriptors, 0.5); // Adjust threshold if needed
+                if (labeledDescriptors.length > 0) {
+                    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
                     loader.style.display = 'none';
                     startRecognition();
                 } else {
-                    loaderText.textContent = 'មិនអាចដំណើរការបានទេ ដោយសារគ្មានទិន្នន័យបុគ្គលិក។';
+                    loaderText.textContent = 'មិនអាចដំណើរការបានទេ ដោយសារគ្មានទិន្នន័យ។';
                 }
             });
         }
         
-        checkInBtn.addEventListener('click', () => handleAttendance('checkin'));
-        checkOutBtn.addEventListener('click', () => handleAttendance('checkout'));
-
         initialize();
     </script>
 </body>
 </html>
+
