@@ -62,7 +62,7 @@
 
     <script>
         // ================== CONFIGURATION ==================
-        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwOa3861iYp1Q4lX-QzG_8b_Xv9h1wK0r1tGz2Z_8Hj6qN_9n3yL4p2s0f6/exec';
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxwSJYdzVMweOyJbPJ-ChnRE01vX0rS04tlfYPPp687_y4_LP4ilFPwBB5joPe-_91u/exec';
         const RECOGNITION_COOLDOWN = 30000; // 30 seconds cooldown for the same person
         const MAX_LOG_ENTRIES = 8;
         // ===============================================
@@ -90,12 +90,19 @@
         }
         
         async function loadModels() {
-            // FIXED: Loading models from the local 'models' folder
+            // Loading models from the local 'models' folder
             const MODEL_URL = 'models'; 
             loaderText.textContent = 'កំពុងទាញយក Models...';
-            await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-            await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-            await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            try {
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+            } catch (error) {
+                console.error("Error loading models:", error);
+                loaderText.textContent = "បរាជ័យក្នុងការទាញយក Models។";
+            }
         }
 
         async function getLabeledFaceDescriptors() {
@@ -105,20 +112,25 @@
                 if (!response.ok) throw new Error(`Network response error: ${response.statusText}`);
                 
                 employeeData = await response.json();
+                if (!Array.isArray(employeeData)) throw new Error("Invalid data format from server.");
+
                 loaderText.textContent = `រកឃើញ ${employeeData.length} នាក់។ កំពុងវិភាគរូបថត...`;
 
                 const descriptors = await Promise.all(
                     employeeData.map(async (employee, index) => {
                         loaderText.textContent = `កំពុងវិភាគ៖ (${index + 1}/${employeeData.length}) ${employee.name}`;
                         try {
-                           // Using a CORS proxy to prevent image loading issues
-                           const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                           const img = await faceapi.fetchImage(proxyUrl + employee.photoUrl);
+                           // FIXED: Using a reliable image proxy to bypass CORS issues
+                           const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(employee.photoUrl)}`;
+                           const img = await faceapi.fetchImage(imageUrl);
                            const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-                           if (!detection) return null;
-                           return new faceapi.LabeledFaceDescriptors(employee.id, [detection.descriptor]);
+                           if (!detection) {
+                               console.warn(`Could not detect face for: ${employee.name}`);
+                               return null;
+                           }
+                           return new faceapi.LabeledFaceDescriptors(String(employee.id), [detection.descriptor]);
                         } catch (e) {
-                           console.error(`Error processing image for ${employee.name}`, e);
+                           console.error(`Error processing image for ${employee.name} (${employee.photoUrl})`, e);
                            return null;
                         }
                     })
@@ -160,10 +172,10 @@
             logContainer.prepend(logElement);
             
             // Trigger animation
-            setTimeout(() => document.getElementById(logId).classList.add('visible'), 50);
+            setTimeout(() => document.getElementById(logId)?.classList.add('visible'), 50);
 
             // Maintain max log entries
-            if (logContainer.children.length > MAX_LOG_ENTRIES) {
+            while (logContainer.children.length > MAX_LOG_ENTRIES) {
                 logContainer.lastChild.remove();
             }
         }
@@ -187,8 +199,67 @@
                     console.log('Success:', result);
                     addLogEntry(result);
                 } else {
-                    console.warn('Attendance already recorded for today:', result.message);
+                    console.warn('Attendance not recorded:', result.message);
                 }
 
-            } catch (error)
+            } catch (error) {
+                 console.error('Error processing recognition:', error);
+            }
+        }
+
+        function startRecognition() {
+            recognitionInterval = setInterval(async () => {
+                if (!faceMatcher || video.paused || video.ended) {
+                    return;
+                }
+
+                const canvasSize = { width: video.videoWidth, height: video.videoHeight };
+                faceapi.matchDimensions(overlay, canvasSize);
+
+                const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+                                                .withFaceLandmarks()
+                                                .withFaceDescriptors();
+                const resizedDetections = faceapi.resizeResults(detections, canvasSize);
+
+                overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+
+                for (const detection of resizedDetections) {
+                    const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                    const box = detection.detection.box;
+                    const drawBox = new faceapi.draw.DrawBox(box, { label: bestMatch.toString() });
+                    drawBox.draw(overlay);
+
+                    if (bestMatch.label !== 'unknown') {
+                        const employeeId = bestMatch.label;
+                        const lastProcessedTime = recentlyProcessed.get(employeeId);
+                        
+                        if (!lastProcessedTime || (Date.now() - lastProcessedTime > RECOGNITION_COOLDOWN)) {
+                            console.log(`Recognized: ${employeeId}. Processing...`);
+                            processRecognition(employeeId);
+                        }
+                    }
+                }
+            }, 1500); // Scan every 1.5 seconds for better performance
+        }
+
+        async function initialize() {
+            await startVideo();
+            video.addEventListener('loadedmetadata', async () => {
+                await loadModels();
+                const labeledDescriptors = await getLabeledFaceDescriptors();
+
+                if (labeledDescriptors.length > 0) {
+                    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5); // Stricter threshold
+                    loader.style.display = 'none';
+                    startRecognition();
+                } else {
+                    loaderText.textContent = 'មិនអាចដំណើរការបានទេ ដោយសារគ្មានទិន្នន័យរូបថតត្រឹមត្រូវ។';
+                }
+            });
+        }
+        
+        initialize();
+    </script>
+</body>
+</html>
 
